@@ -1,8 +1,15 @@
 const express = require('express');
 const app = express();
-const {menuResult, checkAccount, createAccount, loginAccount, createOrder, findOrders} = require('./modules/nedb')
+const {menuResult, checkAccount, createAccount, loginAccount, createOrder, findOrders} = require('./database/nedb')
+const adminRouter = require('./routes/admin');
+const keyRouter = require('./routes/authorize')
+
+
 const PORT = 8000
 app.use(express.json())
+
+
+app.use('/api/admin', adminRouter)
 
 
 
@@ -93,7 +100,7 @@ app.post('/api/account/signup', async (request, response)=> {
     if (credentials.hasOwnProperty('email') && credentials.hasOwnProperty('username') && credentials.hasOwnProperty('password')) {
         const result = await checkAccount(credentials);
         if (result.length < 1) {
-            const result = createAccount(credentials)
+            const result = await createAccount(credentials)
             resObj.message = "success";
             resObj.account = result;
         } else {
