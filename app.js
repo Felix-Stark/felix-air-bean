@@ -1,16 +1,103 @@
 const express = require('express');
 const app = express();
-const {menuResult, checkAccount, createAccount, loginAccount, createOrder, findOrders} = require('./database/nedb')
-const adminRouter = require('./routes/admin');
-const keyRouter = require('./routes/authorize')
+const {menuResult, checkAccount, createAccount, loginAccount, createOrder, findOrders, checkMenuItem, addMenuItem, removeMenuItem} = require('./database/nedb')
+// const admin = require('./routes/admin');
+// const { auth } = require('./modules/authorize')
+
 
 
 const PORT = 8000
-app.use(express.json())
+app.use(express.json());
+// app.use(auth);
+// app.use(admin);
 
+const apiKeys = [
+    'kj234kj23409',
+    '309dsalkj020',
+    'lkdf9j1jkj12',
+    '13klj2348uhj'
+];
 
-app.use('/api/admin', adminRouter)
+function auth(request, response, next) {
+    const apiKey = request.headers['api-key']
+    if (apiKey && apiKeys.includes(apiKey)) {
+        next();
+    } else {
+        const resObj = {
+            error: 'Unvalid key'
+        }
+        response.json(resObj)
+    }
+}
 
+app.get('/api/admin/key', (request, response) => {
+    const index = Math.floor(Math.random() * apiKeys.length);
+    const apiKey = apiKeys[index];
+    const resObj = {
+        key: apiKey
+    }
+
+    response.json(resObj);
+})
+
+app.post('/api/admin/addItem', auth, async(request, response) => {
+    const credentials = request.body;
+    
+    
+    if (credentials.hasOwnProperty("id") && credentials.hasOwnProperty("title") && credentials.hasOwnProperty("desc") && credentials.hasOwnProperty("price")) {
+        let idCheck = await checkMenuItem(credentials);
+        console.log(idCheck)
+        if (idCheck < 1) {
+            const newItem = addMenuItem(credentials)
+            console.log('new item', newItem)
+            const resObj = {
+                success: true,
+                newItem: newItem
+            }
+            console.log('i if empty')
+
+            response.json(resObj)
+
+        } else {
+                const resObj = {
+                    success: false,
+                    message: 'Id already exist'
+                }
+                console.log('i if not empty')
+                response.json(resObj)
+            }
+            
+    } else {
+        const resObj = {
+            success: false,
+            message: 'Invalid body'
+        }
+
+        response.status(400).json(resObj);
+    }
+})
+
+app.delete('/api/admin/:id', auth, async (request, response) => {
+    const id = request.params.id;
+
+    const menu = await removeMenuItem(id)
+
+    if (menu == true) {
+        const resObj = {
+            success: true,
+            menu: menu,
+            message: `Item with ID: ${id} was deleted`
+        }
+        
+        response.json(resObj)
+    } else {
+        const resObj = {
+            success: false,
+            message: 'ID does not exist.'
+        }
+        response.json(resObj)
+    }
+})
 
 
 // /api/order	POST	Sparar en kaffebeställning för en användare och returnerar en ETA-tid och ordernummer 
@@ -19,14 +106,14 @@ app.use('/api/admin', adminRouter)
 
 // UTFORMNING AV FRONTEND REQUEST {"username": "", "password": "", "cart": {[ {ITEM}, {ITEM} ]}
 
-app.post('/api/order', async (request, response)=> {
+app.post('/api/order', (request, response)=> {
     const credentials = request.body
     if (credentials.hasOwnProperty('cart')){
         const resObj = {}
         if (credentials.hasOwnProperty('username')) {
-                const result = await checkAccount(credentials)
+                const result = checkAccount(credentials)
                 if (result.length > 0) {
-                    const orderResults = await createOrder(credentials);
+                    const orderResults = createOrder(credentials);
                    resObj.order= orderResults
                    addPrices(orderResults)
                    resObj.order.ordernumber= orderResults._id
@@ -36,7 +123,7 @@ app.post('/api/order', async (request, response)=> {
             response.json(resObj)
         } else {
             credentials.username = "guest";
-            const orderResults = await createOrder(credentials);
+            const orderResults = createOrder(credentials);
             addPrices(orderResults)
             resObj.order= orderResults
             resObj.order.ordernumber= orderResults._id
@@ -53,13 +140,12 @@ function addPrices(orderResults){
     }
 }
 
-
 // /api/order/:id	GET	Returnerar orderhistorik för en specifik användare
 // skicka med en jämförelse i returneringen om en är klar
-app.get('/api/order/:id', async (request, response)=> {
+app.get('/api/order/:id', (request, response)=> {
 
         const username = request.params.id;
-        const findOrder = await findOrders(username)
+        const findOrder = findOrders(username)
         for (let i = 0; i < findOrder.length; i++) {
             const singleOrder = findOrder[i];
             checkIfDone(singleOrder);
@@ -80,27 +166,23 @@ function checkIfDone(singleOrder) {
     }
 }
 
-
-
 // /api/menu	GET	Returnerar en kaffemeny
-app.get('/api/menu', async (request, response)=> {
-    const menuResults = await menuResult();
+app.get('/api/menu', (request, response)=> {
+    const menuResults = menuResult();
     const resObj = {menu: menuResults};
     response.json(resObj);
-    })
-    
-
+})
 
 // /api/account/signup	POST	Skapar ett användarkonto
 
 //   UTFORMNING AV SIGNUP FRONTEND  {"email" : "", "username": "", "password": ""}
-app.post('/api/account/signup', async (request, response)=> {
+app.post('/api/account/signup', (request, response)=> {
     const credentials = request.body
     const resObj = {};
     if (credentials.hasOwnProperty('email') && credentials.hasOwnProperty('username') && credentials.hasOwnProperty('password')) {
-        const result = await checkAccount(credentials);
+        const result = checkAccount(credentials);
         if (result.length < 1) {
-            const result = await createAccount(credentials)
+            const result = createAccount(credentials)
             resObj.message = "success";
             resObj.account = result;
         } else {
@@ -118,11 +200,11 @@ app.post('/api/account/signup', async (request, response)=> {
 //   UTFORMNING AV LOGIN FRONTEND  {"username": "", "password": ""}
 
 
-app.post('/api/account/login', async (request, response)=> {
+app.post('/api/account/login', (request, response)=> {
     const credentials = request.body;
     const resObj = {};
     if (credentials.hasOwnProperty('username') && credentials.hasOwnProperty('password')) {
-        const result = await loginAccount(credentials);
+        const result = loginAccount(credentials);
         if (result.length > 0) {
             resObj.message = "Account successfully logged in!";
         } else  resObj.message = "Wrong username/password";
